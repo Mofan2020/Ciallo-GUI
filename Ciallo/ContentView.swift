@@ -11,93 +11,72 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @StateObject private var audioManager = AudioManager()
     @State private var showingFolderPicker = false
-    @State private var securityScopedBookmark: URL?
 
     var body: some View {
         NavigationSplitView {
-            sidebarContent
-                .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 250)
+            List {
+                Section("音频文件") {
+                    ForEach(audioManager.files) { file in
+                        AudioFileRow(
+                            file: file,
+                            isSelected: audioManager.currentFile?.id == file.id,
+                            onSelect: {
+                                audioManager.selectFile(file)
+                                audioManager.togglePlayPause()
+                            }
+                        )
+                    }
+                }
+            }
+            .listStyle(.sidebar)
+            .navigationTitle("Ciallo")
+            .toolbar {
+                ToolbarItem(placement: .navigation) {
+                    Button("添加文件夹") {
+                        showingFolderPicker = true
+                    }
+                }
+            }
+            .fileImporter(
+                isPresented: $showingFolderPicker,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false,
+                onCompletion: handleFolderSelection
+            )
+            .onAppear {
+                loadDefaultFolder()
+            }
         } detail: {
             detailContent
         }
     }
 
-    private var sidebarContent: some View {
-        List {
-            folderSection
-            if audioManager.currentFolder != nil {
-                audioFilesSection
-            }
+    private func loadDefaultFolder() {
+        if let resourcesURL = Bundle.main.resourceURL {
+            audioManager.loadFiles(from: resourcesURL)
         }
-        .listStyle(.sidebar)
-        .navigationTitle("Ciallo")
-        .fileImporter(
-            isPresented: $showingFolderPicker,
-            allowedContentTypes: [.folder],
-            allowsMultipleSelection: false,
-            onCompletion: handleFolderSelection
-        )
-    }
-
-    private var folderSection: some View {
-        Section("文件夹") {
-            ForEach(audioManager.availableFolders) { folder in
-                FolderRow(
-                    folder: folder,
-                    isSelected: audioManager.currentFolder?.id == folder.id,
-                    onSelect: {
-                        audioManager.selectFolder(folder)
-                    }
-                )
-            }
-
-            addFolderButton
-        }
-    }
-
-    private var audioFilesSection: some View {
-        Section("音频文件") {
-            ForEach(audioManager.currentFolder?.files ?? []) { file in
-                AudioFileRow(
-                    file: file,
-                    isSelected: audioManager.currentFile?.id == file.id,
-                    onSelect: {
-                        audioManager.selectFile(file)
-                        if !audioManager.isPlaying {
-                            audioManager.togglePlayPause()
-                        }
-                    }
-                )
-            }
-        }
-    }
-
-    private var addFolderButton: some View {
-        Button(action: { showingFolderPicker = true }) {
-            Label("添加文件夹", systemImage: "folder.badge.plus")
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.accentColor)
     }
 
     private func handleFolderSelection(result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            if let url = urls.first {
-                audioManager.addFolder(at: url)
-            }
-        case .failure(let error):
-            print("Failed to select folder: \(error)")
+        if case .success(let urls) = result, let url = urls.first {
+            audioManager.loadFiles(from: url)
         }
     }
 
     private var detailContent: some View {
         VStack(spacing: 30) {
             Spacer()
+
             playButton
+
             volumeControl
-            playbackModeControls
+
+            currentFileName
+
+            playbackControls
+
             Spacer()
+
             bottomControls
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -115,120 +94,45 @@ struct ContentView: View {
     }
 
     private var volumeControl: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Image(systemName: "speaker.fill")
-                    .foregroundColor(.secondary)
-                Slider(value: $audioManager.currentVolume, in: 0...1)
-                Image(systemName: "speaker.wave.3.fill")
-                    .foregroundColor(.secondary)
+        HStack {
+            Image(systemName: "speaker.fill")
+            Slider(value: $audioManager.currentVolume, in: 0...1, onEditingChanged: { editing in
+                if !editing {
+                    audioManager.setVolume(audioManager.currentVolume)
+                }
+            })
+            Image(systemName: "speaker.wave.3.fill")
+        }
+        .frame(width: 200)
+    }
+
+    private var currentFileName: some View {
+        Text(audioManager.currentFile?.name ?? "未选择音频")
+            .font(.headline)
+    }
+
+    private var playbackControls: some View {
+        HStack(spacing: 30) {
+            Button(action: { audioManager.playRandom() }) {
+                Image(systemName: "shuffle")
+                    .font(.title2)
             }
-            .frame(width: 200)
+            .buttonStyle(.plain)
+            .disabled(audioManager.files.isEmpty)
 
-            Text("音量: \(Int(audioManager.currentVolume * 100))%")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-    }
-
-    private var playbackModeControls: some View {
-        VStack(spacing: 16) {
-            if let currentFile = audioManager.currentFile {
-                Text(currentFile.name)
-                    .font(.headline)
-                    .lineLimit(1)
+            Button(action: { audioManager.playNext() }) {
+                Image(systemName: "forward.fill")
+                    .font(.title2)
             }
-
-            HStack(spacing: 20) {
-                previousButton
-                shuffleButton
-                nextButton
-            }
-        }
-    }
-
-    private var previousButton: some View {
-        Button(action: playPrevious) {
-            Image(systemName: "backward.fill")
-                .font(.title2)
-        }
-        .buttonStyle(.plain)
-        .disabled(audioManager.currentFile == nil || audioManager.isRandom)
-    }
-
-    private var shuffleButton: some View {
-        Button(action: { audioManager.playRandom() }) {
-            Image(systemName: "shuffle")
-                .font(.title2)
-        }
-        .buttonStyle(.plain)
-        .disabled(audioManager.availableFiles.isEmpty)
-    }
-
-    private var nextButton: some View {
-        Button(action: { audioManager.playNext() }) {
-            Image(systemName: "forward.fill")
-                .font(.title2)
-        }
-        .buttonStyle(.plain)
-        .disabled(audioManager.currentFile == nil || audioManager.isRandom)
-    }
-
-    private func playPrevious() {
-        guard let folder = audioManager.currentFolder,
-              let currentIndex = folder.files.firstIndex(where: { $0.id == audioManager.currentFile?.id }) else { return }
-        let prevIndex = (currentIndex - 1 + folder.files.count) % folder.files.count
-        audioManager.selectFile(folder.files[prevIndex])
-        if audioManager.isPlaying {
-            audioManager.play()
+            .buttonStyle(.plain)
+            .disabled(audioManager.currentFile == nil)
         }
     }
 
     private var bottomControls: some View {
         HStack {
-            randomToggle
-            loopToggle
-        }
-        .padding(.horizontal)
-    }
-
-    private var randomToggle: some View {
-        Toggle(isOn: $audioManager.isRandom) {
-            Label("随机播放", systemImage: "shuffle")
-        }
-        .toggleStyle(.checkbox)
-    }
-
-    private var loopToggle: some View {
-        Toggle(isOn: $audioManager.isLooping) {
-            Label("循环播放", systemImage: "repeat")
-        }
-        .toggleStyle(.checkbox)
-    }
-}
-
-struct FolderRow: View {
-    let folder: AudioFolder
-    let isSelected: Bool
-    let onSelect: () -> Void
-
-    var body: some View {
-        HStack {
-            Button(action: onSelect) {
-                HStack {
-                    Image(systemName: "folder.fill")
-                        .foregroundColor(.blue)
-                    Text(folder.name)
-                        .foregroundColor(isSelected ? .accentColor : .primary)
-                }
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            Text("\(folder.files.count)")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            Toggle("随机播放", isOn: $audioManager.isRandom)
+            Toggle("循环播放", isOn: $audioManager.isLooping)
         }
     }
 }
