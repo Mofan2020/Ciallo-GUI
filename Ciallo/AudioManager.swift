@@ -45,17 +45,34 @@ final class AudioManager: ObservableObject {
     }
 
     private func loadDefaultFolders() {
-        if let execPath = Bundle.main.executableURL {
-            let workDir = execPath.deletingLastPathComponent()
-            let assetsDir = workDir.appendingPathComponent("Assets")
+        var searchPaths: [URL] = []
 
+        if let execPath = Bundle.main.executableURL {
+            let macOSDir = execPath.deletingLastPathComponent()
+            let contentsDir = macOSDir.deletingLastPathComponent()
+            let resourcesDir = contentsDir.appendingPathComponent("Resources")
+            searchPaths.append(resourcesDir)
+            searchPaths.append(contentsDir)
+        }
+
+        if let bundleURL = Bundle.main.bundleURL as URL? {
+            searchPaths.append(bundleURL)
+        }
+
+        for path in searchPaths {
+            let assetsDir = path.appendingPathComponent("Assets")
             if FileManager.default.fileExists(atPath: assetsDir.path) {
                 addFolder(at: assetsDir)
             }
 
-            let audioDefaultDir = workDir.appendingPathComponent("AudioDefault")
+            let audioDefaultDir = path.appendingPathComponent("AudioDefault")
             if FileManager.default.fileExists(atPath: audioDefaultDir.path) {
                 addFolder(at: audioDefaultDir)
+            }
+
+            let cialloDir = path.appendingPathComponent("ciallo")
+            if FileManager.default.fileExists(atPath: cialloDir.path) {
+                addFolder(at: cialloDir)
             }
         }
     }
@@ -74,8 +91,10 @@ final class AudioManager: ObservableObject {
         for fileURL in contents {
             let fileName = fileURL.deletingPathExtension().lastPathComponent
             if fileURL.pathExtension.lowercased() == "mp3" {
-                let pattern = "^(\\d{5})$"
-                if let range = fileName.range(of: pattern, options: .regularExpression) {
+                let pattern = "(\\d{5})$"
+                if let regex = try? NSRegularExpression(pattern: pattern),
+                   let match = regex.firstMatch(in: fileName, range: NSRange(fileName.startIndex..., in: fileName)),
+                   let range = Range(match.range(at: 1), in: fileName) {
                     let indexStr = String(fileName[range])
                     if let index = Int(indexStr) {
                         let audioFile = AudioFile(name: fileName, url: fileURL, index: index)

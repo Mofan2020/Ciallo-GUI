@@ -10,12 +10,11 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var audioManager = AudioManager()
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showingFolderPicker = false
     @State private var securityScopedBookmark: URL?
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
+        NavigationSplitView {
             sidebarContent
                 .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 250)
         } detail: {
@@ -32,11 +31,6 @@ struct ContentView: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Ciallo")
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                sidebarToggleButton
-            }
-        }
         .fileImporter(
             isPresented: $showingFolderPicker,
             allowedContentTypes: [.folder],
@@ -84,18 +78,6 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .foregroundColor(.accentColor)
-    }
-
-    private var sidebarToggleButton: some View {
-        Button(action: toggleSidebar) {
-            Image(systemName: "sidebar.left")
-        }
-    }
-
-    private func toggleSidebar() {
-        withAnimation {
-            columnVisibility = columnVisibility == .all ? .detailOnly : .all
-        }
     }
 
     private func handleFolderSelection(result: Result<[URL], Error>) {
